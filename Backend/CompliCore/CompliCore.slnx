@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../CompliCore.Tests/CompliCore.Tests.csproj" />
+  <Project Path="CompliCore.csproj" />
+</Solution>

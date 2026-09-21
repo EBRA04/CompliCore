@@ -1,0 +1,25 @@
+# secrets
+.env
+.env.local
+**/appsettings.Development.json
+
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# IDEs
+.idea/
+.vscode/
+
+# frontend
+node_modules/
+dist/
+
+# local uploads / OS junk
+uploads/
+.DS_Store
+Thumbs.db
