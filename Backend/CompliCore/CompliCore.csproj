@@ -28,7 +28,6 @@
     <Folder Include="Middleware\" />
     <Folder Include="BackgroundJobs\" />
     <Folder Include="DTOs\" />
-    <Folder Include="Services\" />
   </ItemGroup>
 
 </Project>

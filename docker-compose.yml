@@ -13,5 +13,31 @@ services:
       timeout: 3s
       retries: 10
 
+  api:
+    build: ./Backend/CompliCore
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ConnectionStrings__Default: >-
+        Host=db;Port=5432;Database=complicore;
+        Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Storage__RootPath: /data/uploads
+      Jwt__Key: ${JWT_KEY}
+      Jwt__Issuer: complicore
+      Jwt__Audience: complicore-clients
+    ports:
+      - "8080:8080"
+    volumes:
+      - uploads:/data/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
 volumes:
   pgdata:
+  uploads:

@@ -19,5 +19,17 @@ namespace CompliCore.Tests
                 Assert.True(classified, $"{type} is not classified");
             }
         }
+
+        [Fact]
+        public void NoTypeIsBothEmployeeAndCompanyLevel()
+        {
+            foreach (var type in Enum.GetValues<ComplianceItemType>())
+            {
+                var inEmployee = ComplianceItemRules.EmployeeLevel.Contains(type);
+                var inCompany = ComplianceItemRules.CompanyLevel.Contains(type);
+
+                Assert.False(inEmployee && inCompany, $"{type} is in both sets");
+            }
+        }
     }
 }
