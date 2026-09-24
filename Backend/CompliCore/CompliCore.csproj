@@ -24,10 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Controllers\" />
-    <Folder Include="Middleware\" />
     <Folder Include="BackgroundJobs\" />
-    <Folder Include="DTOs\" />
   </ItemGroup>
 
 </Project>
