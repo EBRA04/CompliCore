@@ -1,4 +1,6 @@
-﻿using CompliCore.Models;
+﻿using CompliCore.Interfaces;
+using CompliCore.Models;
+using CompliCore.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace CompliCore.Data;
@@ -8,8 +10,18 @@ namespace CompliCore.Data;
 // Those come on Day 4 and add zero schema changes (filters aren't in the migration).
 public class AppDbContext : DbContext
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+    private readonly ICurrentUser _current;
 
+    public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser current) : base(options)
+    {
+        _current = current;
+    }
+
+    // Read on every query. MUST be a member of the context (not a captured
+    // local var) so EF re-evaluates it fresh per query — the context itself
+    // is created new per HTTP request, so this always reflects the CURRENT
+    // request's tenant, not whichever tenant happened to build the query plan first.
+    private Guid CurrentTenantId => _current.TenantId;
     // DbSet<T> = entry point to query/modify one table.
     // e.g. _db.Employees.Where(...) becomes a SQL query on the Employees table.
     public DbSet<Tenant> Tenants => Set<Tenant>();
@@ -37,6 +49,7 @@ public class AppDbContext : DbContext
 
         b.Entity<User>(e =>
         {
+            e.HasQueryFilter(x => x.TenantId == CurrentTenantId);
             e.Property(x => x.FullName).IsRequired().HasMaxLength(120);
             e.Property(x => x.Email).IsRequired().HasMaxLength(200);
             e.Property(x => x.PasswordHash).IsRequired();
@@ -63,6 +76,7 @@ public class AppDbContext : DbContext
 
         b.Entity<Employee>(e =>
         {
+            e.HasQueryFilter(x => x.TenantId == CurrentTenantId);
             e.Property(x => x.FullName).IsRequired().HasMaxLength(120);
             e.Property(x => x.Nationality).IsRequired().HasMaxLength(80);
             e.Property(x => x.IqamaNumber).HasMaxLength(10);
@@ -81,6 +95,7 @@ public class AppDbContext : DbContext
 
         b.Entity<ComplianceItem>(e =>
         {
+            e.HasQueryFilter(x => x.TenantId == CurrentTenantId);
             e.Property(x => x.Title).IsRequired().HasMaxLength(150);
             e.Property(x => x.ReferenceNumber).HasMaxLength(60);
             e.Property(x => x.Notes).HasMaxLength(1000);
@@ -107,6 +122,7 @@ public class AppDbContext : DbContext
 
         b.Entity<Document>(e =>
         {
+            e.HasQueryFilter(x => x.TenantId == CurrentTenantId);
             e.Property(x => x.OriginalFileName).IsRequired().HasMaxLength(255);
             e.Property(x => x.StoredFileName).IsRequired().HasMaxLength(80);
             e.Property(x => x.ContentType).IsRequired().HasMaxLength(100);
@@ -127,6 +143,7 @@ public class AppDbContext : DbContext
 
         b.Entity<Notification>(e =>
         {
+            e.HasQueryFilter(x => x.TenantId == CurrentTenantId);
             e.Property(x => x.Message).IsRequired().HasMaxLength(300);
 
             // Composite unique index = what makes the reminder worker
@@ -151,6 +168,7 @@ public class AppDbContext : DbContext
 
         b.Entity<AuditLog>(e =>
         {
+            e.HasQueryFilter(x => x.TenantId == CurrentTenantId);
             e.Property(x => x.UserEmail).HasMaxLength(200);
             e.Property(x => x.EntityName).IsRequired().HasMaxLength(60);
             e.Property(x => x.Action).HasConversion<string>().HasMaxLength(20);
@@ -167,5 +185,38 @@ public class AppDbContext : DbContext
             // (Day 8) — unlike the CreatedAt fields above, nothing to
             // remember here.
         });
+    }
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken ct = default)
+    {
+        ApplyConventions();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
+    }
+
+    private void ApplyConventions()
+    {
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.Entity is ITenantEntity t && entry.State == EntityState.Added)
+            {
+                if (t.TenantId == Guid.Empty)
+                {
+                    t.TenantId = CurrentTenantId;
+                }
+                else if (CurrentTenantId != Guid.Empty && t.TenantId != CurrentTenantId)
+                {
+                    throw new InvalidOperationException("Cross-tenant write blocked.");
+                }
+
+                if (t.TenantId == Guid.Empty)
+                {
+                    throw new InvalidOperationException("Tenant-owned row without a tenant.");
+                }
+            }
+
+            if (entry.Entity is AuditLog && entry.State is EntityState.Modified or EntityState.Deleted)
+            {
+                throw new InvalidOperationException("Audit log is append-only.");
+            }
+        }
     }
 }

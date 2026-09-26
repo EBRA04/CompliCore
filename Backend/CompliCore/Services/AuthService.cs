@@ -24,7 +24,7 @@ public class AuthService
     {
         var normalizedEmail = request.Email.ToLowerInvariant();
 
-        if (await _db.Users.AnyAsync(u => u.Email == normalizedEmail))
+        if (await _db.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == normalizedEmail))
         {
             throw new ConflictException("User with this email already exists.");
         }
