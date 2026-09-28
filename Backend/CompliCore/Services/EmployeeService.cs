@@ -4,7 +4,7 @@ using CompliCore.DTOs.EmployeeDtos;
 using CompliCore.Exceptions;
 using CompliCore.Models;
 using Microsoft.EntityFrameworkCore;
-
+using System.Text.RegularExpressions;
 namespace CompliCore.Services;
 
 public class EmployeeService
@@ -65,6 +65,10 @@ public class EmployeeService
             var duplicate = await _db.Employees
                 .AnyAsync(e => e.IqamaNumber == request.IqamaNumber);
 
+            if (!string.IsNullOrWhiteSpace(request.IqamaNumber) && !Regex.IsMatch(request.IqamaNumber, @"^2\d{9}$"))
+            {
+                throw new DomainException("Iqama number must be 10 digits starting with 2.");
+            }
             if (duplicate)
             {
                 throw new ConflictException("An employee with this iqama number already exists.");
@@ -95,7 +99,10 @@ public class EmployeeService
         {
             throw new NotFoundException("Employee not found.");
         }
-
+        if (!string.IsNullOrWhiteSpace(request.IqamaNumber) && !Regex.IsMatch(request.IqamaNumber, @"^2\d{9}$"))
+        {
+            throw new DomainException("Iqama number must be 10 digits starting with 2.");
+        }
         if (!string.IsNullOrWhiteSpace(request.IqamaNumber))
         {
             var duplicate = await _db.Employees

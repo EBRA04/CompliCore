@@ -1,5 +1,6 @@
 ﻿using CompliCore.Data;
 using CompliCore.DTOs.AuthDtos;
+using CompliCore.DTOs.UserDtos;
 using CompliCore.Enums;
 using CompliCore.Exceptions;
 using CompliCore.Models;
@@ -122,4 +123,47 @@ public class AuthService
             CompanyName = tenant.Name
         };
 }
+    public async Task<List<UserListItemResponse>> GetUsersAsync()
+    {
+        return await _db.Users
+            .Select(u => new UserListItemResponse(u.Id, u.FullName, u.Email, u.Role.ToString(), u.CreatedAt))
+            .ToListAsync();
+    }
+
+    public async Task<UserListItemResponse> CreateUserAsync(CreateUserRequest request)
+    {
+        var normalizedEmail = request.Email.ToLowerInvariant();
+
+        if (await _db.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == normalizedEmail))
+        {
+            throw new ConflictException("User with this email already exists.");
+        }
+
+        var user = new User
+        {
+            FullName = request.FullName,
+            Email = normalizedEmail,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            Role = request.Role
+        };
+
+        _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
+        return new UserListItemResponse(user.Id, user.FullName, user.Email, user.Role.ToString(), user.CreatedAt);
+    }
+
+    public async Task DeleteUserAsync(Guid userId, Guid currentUserId)
+    {
+        if (userId == currentUserId)
+        {
+            throw new DomainException("You cannot delete yourself.");
+        }
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null) throw new NotFoundException("User not found.");
+
+        _db.Users.Remove(user);
+        await _db.SaveChangesAsync();
+    }
 }

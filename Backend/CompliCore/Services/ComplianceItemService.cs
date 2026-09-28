@@ -20,17 +20,49 @@ public class ComplianceItemService
         _db = db;
         _time = time;
     }
-    
 
-    public async Task<PagedResult<ComplianceItemResponse>> GetPagedAsync(int page, int pageSize)
+
+    public async Task<PagedResult<ComplianceItemResponse>> GetPagedAsync(
+    string? status, string? type, Guid? employeeId, bool? companyOnly, int page, int pageSize)
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
-        var totalCount = await _db.ComplianceItems.CountAsync();
+        var query = _db.ComplianceItems.AsQueryable();
 
-        var items = await _db.ComplianceItems
+        if (employeeId != null)
+        {
+            query = query.Where(i => i.EmployeeId == employeeId);
+        }
+
+        if (companyOnly == true)
+        {
+            query = query.Where(i => i.EmployeeId == null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(type) && Enum.TryParse<ComplianceItemType>(type, true, out var parsedType))
+        {
+            query = query.Where(i => i.Type == parsedType);
+        }
+
+        var today = ComplianceStatusCalculator.Today(_time);
+        var soon = today.AddDays(60);
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = status switch
+            {
+                "Expired" => query.Where(i => i.ExpiryDate < today),
+                "Expiring" => query.Where(i => i.ExpiryDate >= today && i.ExpiryDate <= soon),
+                "Valid" => query.Where(i => i.ExpiryDate > soon),
+                _ => query
+            };
+        }
+
+        var totalCount = await query.CountAsync();
+
+        var items = await query
             .OrderBy(i => i.ExpiryDate)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)

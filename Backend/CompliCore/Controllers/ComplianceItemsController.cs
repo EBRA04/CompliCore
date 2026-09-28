@@ -18,12 +18,13 @@ public class ComplianceItemsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetPaged([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> GetPaged(
+    [FromQuery] string? status, [FromQuery] string? type, [FromQuery] Guid? employeeId,
+    [FromQuery] bool? companyOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var result = await _service.GetPagedAsync(page, pageSize);
+        var result = await _service.GetPagedAsync(status, type, employeeId, companyOnly, page, pageSize);
         return Ok(result);
     }
-
     [HttpGet("{id}")]
     public async Task<IActionResult> GetById(Guid id)
     {

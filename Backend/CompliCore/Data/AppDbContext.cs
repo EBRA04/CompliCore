@@ -190,7 +190,8 @@ public class AppDbContext : DbContext
 
     // The main problem this solves: protects every SELECT (via filters
     // above) AND every INSERT/UPDATE/DELETE (via the guard below) — plus
-    // now, also logs Created/Updated/Deleted for the audited entity types.
+    // now, also logs Created/Updated/Deleted with field-level diffs for
+    // the audited entity types.
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken ct = default)
     {
         ApplyConventions();
@@ -199,6 +200,11 @@ public class AppDbContext : DbContext
 
     private void ApplyConventions()
     {
+        // DetectChanges() forces EF to compare current vs original values
+        // NOW, before we read them below — otherwise Modified entries might
+        // not have their OriginalValue/CurrentValue diff computed yet.
+        ChangeTracker.DetectChanges();
+
         foreach (var entry in ChangeTracker.Entries())
         {
             if (entry.Entity is ITenantEntity t && entry.State == EntityState.Added)
@@ -224,14 +230,20 @@ public class AppDbContext : DbContext
             }
         }
 
-        // Simple audit trail: log Created/Updated/Deleted for the audited
-        // entity types. No field-level diffs (kept deliberately simple).
+        // Audit trail with field-level diffs (spec 11.2/11.3): for each
+        // audited entity type that was Created/Updated/Deleted, build a
+        // ChangesJson of { "Field": { "old": ..., "new": ... } }.
         var auditLogs = new List<AuditLog>();
 
         foreach (var entry in ChangeTracker.Entries())
         {
             if (entry.Entity is not (Employee or ComplianceItem or Document or User)) continue;
             if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted)) continue;
+
+            var changes = BuildChanges(entry);
+            // A Modified entry with no real changes (e.g. re-saved but
+            // nothing actually differs) isn't worth logging.
+            if (entry.State == EntityState.Modified && changes.Count == 0) continue;
 
             var tenantId = entry.Entity is ITenantEntity t2 ? t2.TenantId : CurrentTenantId;
 
@@ -248,7 +260,7 @@ public class AppDbContext : DbContext
                     EntityState.Modified => AuditAction.Updated,
                     _ => AuditAction.Deleted
                 },
-                ChangesJson = "{}",
+                ChangesJson = System.Text.Json.JsonSerializer.Serialize(changes),
                 Timestamp = DateTime.UtcNow
             });
         }
@@ -257,5 +269,35 @@ public class AppDbContext : DbContext
         {
             Entry(log).State = EntityState.Added;
         }
+    }
+
+    // Never log these: PasswordHash is a secret, CreatedAt/UpdatedAt are
+    // timestamps stamped automatically and aren't meaningful "changes."
+    private static readonly HashSet<string> AuditSkipProperties = new() { "PasswordHash", "CreatedAt", "UpdatedAt" };
+
+    private static Dictionary<string, object?> BuildChanges(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry)
+    {
+        var changes = new Dictionary<string, object?>();
+
+        foreach (var prop in entry.Properties)
+        {
+            var name = prop.Metadata.Name;
+            if (AuditSkipProperties.Contains(name)) continue;
+
+            if (entry.State == EntityState.Added)
+            {
+                changes[name] = new { @new = prop.CurrentValue };
+            }
+            else if (entry.State == EntityState.Deleted)
+            {
+                changes[name] = new { old = prop.OriginalValue };
+            }
+            else if (entry.State == EntityState.Modified && !Equals(prop.OriginalValue, prop.CurrentValue))
+            {
+                changes[name] = new { old = prop.OriginalValue, @new = prop.CurrentValue };
+            }
+        }
+
+        return changes;
     }
 }

@@ -2,6 +2,9 @@
 
 namespace CompliCore.Rules;
 
+/// <summary>
+/// here is where the days remmaining and status of compliance items are calculated based on the expiry date and the current date.
+/// </summary>
 public static class ComplianceStatusCalculator
 {
     private const int ExpiringWindowDays = 60;
