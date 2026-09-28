@@ -186,6 +186,8 @@ public class AppDbContext : DbContext
             // remember here.
         });
     }
+
+    //the main problem this solve protect every SELECT WHERE statement
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken ct = default)
     {
         ApplyConventions();
