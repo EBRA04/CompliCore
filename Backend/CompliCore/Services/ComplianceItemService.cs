@@ -119,6 +119,25 @@ public class ComplianceItemService
         _db.ComplianceItems.Remove(item);
         await _db.SaveChangesAsync();
     }
+    public async Task<DashboardResponse> GetDashboardAsync()
+    {
+        var items = await _db.ComplianceItems.ToListAsync();
+        var today = ComplianceStatusCalculator.Today(_time);
+
+        var responses = items.Select(MapToResponse).ToList();
+
+        var valid = responses.Count(r => r.Status == "Valid");
+        var expiring = responses.Count(r => r.Status == "Expiring");
+        var expired = responses.Count(r => r.Status == "Expired");
+
+        var nextToExpire = responses
+            .Where(r => r.ExpiryDate >= today)
+            .OrderBy(r => r.ExpiryDate)
+            .Take(10)
+            .ToList();
+
+        return new DashboardResponse(responses.Count, valid, expiring, expired, nextToExpire);
+    }
 
     private static void ValidateTypeSubject(CompliCore.Enums.ComplianceItemType type, Guid? employeeId)
     {

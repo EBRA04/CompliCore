@@ -54,4 +54,11 @@ public class ComplianceItemsController : ControllerBase
         await _service.DeleteAsync(id);
         return NoContent();
     }
+
+    [HttpGet("/api/dashboard")]
+    public async Task<IActionResult> GetDashboard()
+    {
+        var result = await _service.GetDashboardAsync();
+        return Ok(result);
+    }
 }

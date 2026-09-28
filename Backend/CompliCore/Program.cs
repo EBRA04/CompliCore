@@ -1,10 +1,11 @@
+using CompliCore.BackgroundJobs;
 using CompliCore.Data;
 using CompliCore.Middleware;
 using CompliCore.Services;
-using Scalar.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Scalar.AspNetCore;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,6 +31,8 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<EmployeeService>();
 builder.Services.AddScoped<ComplianceItemService>();
+builder.Services.AddScoped<ReminderService>();
+builder.Services.AddHostedService<ReminderWorker>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<EmployeeService>();
 

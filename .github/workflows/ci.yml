@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet restore Backend/CompliCore.Tests
+      - run: dotnet build Backend/CompliCore.Tests -c Release --no-restore
+      - run: dotnet test Backend/CompliCore.Tests -c Release --no-build
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t complicore-api ./Backend/CompliCore

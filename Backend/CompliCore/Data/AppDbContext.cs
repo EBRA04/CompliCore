@@ -1,4 +1,5 @@
-﻿using CompliCore.Interfaces;
+﻿using CompliCore.Enums;
+using CompliCore.Interfaces;
 using CompliCore.Models;
 using CompliCore.Services;
 using Microsoft.EntityFrameworkCore;
@@ -187,7 +188,9 @@ public class AppDbContext : DbContext
         });
     }
 
-    //the main problem this solve protect every SELECT WHERE statement
+    // The main problem this solves: protects every SELECT (via filters
+    // above) AND every INSERT/UPDATE/DELETE (via the guard below) — plus
+    // now, also logs Created/Updated/Deleted for the audited entity types.
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken ct = default)
     {
         ApplyConventions();
@@ -219,6 +222,40 @@ public class AppDbContext : DbContext
             {
                 throw new InvalidOperationException("Audit log is append-only.");
             }
+        }
+
+        // Simple audit trail: log Created/Updated/Deleted for the audited
+        // entity types. No field-level diffs (kept deliberately simple).
+        var auditLogs = new List<AuditLog>();
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.Entity is not (Employee or ComplianceItem or Document or User)) continue;
+            if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted)) continue;
+
+            var tenantId = entry.Entity is ITenantEntity t2 ? t2.TenantId : CurrentTenantId;
+
+            auditLogs.Add(new AuditLog
+            {
+                TenantId = tenantId == Guid.Empty ? CurrentTenantId : tenantId,
+                UserId = _current.UserId,
+                UserEmail = _current.Email,
+                EntityName = entry.Entity.GetType().Name,
+                EntityId = (Guid)entry.Property("Id").CurrentValue!,
+                Action = entry.State switch
+                {
+                    EntityState.Added => AuditAction.Created,
+                    EntityState.Modified => AuditAction.Updated,
+                    _ => AuditAction.Deleted
+                },
+                ChangesJson = "{}",
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
+        foreach (var log in auditLogs)
+        {
+            Entry(log).State = EntityState.Added;
         }
     }
 }
