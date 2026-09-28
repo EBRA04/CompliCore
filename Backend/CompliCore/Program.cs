@@ -33,6 +33,7 @@ builder.Services.AddScoped<EmployeeService>();
 builder.Services.AddScoped<ComplianceItemService>();
 builder.Services.AddScoped<ReminderService>();
 builder.Services.AddHostedService<ReminderWorker>();
+builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<EmployeeService>();
 
