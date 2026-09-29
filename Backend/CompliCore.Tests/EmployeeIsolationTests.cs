@@ -41,4 +41,18 @@ public class EmployeeIsolationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.NotFound, getAsB.StatusCode);
         Assert.Equal(HttpStatusCode.OK, getAsA.StatusCode);
     }
+    [Fact]
+    public async Task TwoEmployees_WithoutIqama_BothSucceed()
+    {
+        var (client, _) = await TestHelpers.RegisterTenantAsync(
+            _factory, "Al-Noor Contracting", $"a-{Guid.NewGuid()}@test.example");
+
+        var first = await client.PostAsJsonAsync("/api/employees",
+            new CreateEmployeeRequest("Ali Hassan", "Egyptian", "", null));
+        var second = await client.PostAsJsonAsync("/api/employees",
+            new CreateEmployeeRequest("Omar Saleh", "Sudanese", "", null));
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+    }
 }

@@ -7,12 +7,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+// JsonStringEnumConverter lets the API accept and return enums as text
+// ("Iqama", "Viewer") instead of numbers (0, 1). The frontend sends text.
+// Numbers are still accepted too, so existing tests keep working.
+builder.Services.AddControllers()
+    .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
@@ -35,9 +41,6 @@ builder.Services.AddScoped<ReminderService>();
 builder.Services.AddHostedService<ReminderWorker>();
 builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.AddScoped<EmployeeService>();
-
-
 
 var jwtKey = builder.Configuration["Jwt:Key"]!;
 
@@ -59,7 +62,17 @@ builder.Services
         };
     });
 
-
+// Only needed if a browser calls the API directly from another origin.
+// In development the Vite dev server proxies /api, so this is a safety net.
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
 
 var app = builder.Build();
 
@@ -68,7 +81,6 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
-
 }
 
 // REMOVED: app.UseHttpsRedirection();
@@ -77,6 +89,7 @@ if (app.Environment.IsDevelopment())
 // nonexistent HTTPS port once running in Docker.
 
 app.UseMiddleware<ExceptionMiddleware>();
+app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
@@ -102,7 +115,6 @@ using (var scope = app.Services.CreateScope())
 {
     scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
 }
-
 
 app.Run();
 

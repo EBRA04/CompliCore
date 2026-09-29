@@ -275,6 +275,10 @@ public class AppDbContext : DbContext
     // timestamps stamped automatically and aren't meaningful "changes."
     private static readonly HashSet<string> AuditSkipProperties = new() { "PasswordHash", "CreatedAt", "UpdatedAt" };
 
+    // Enums are stored as their names ("Viewer") instead of numbers (1) so the
+    // audit log is readable without knowing the enum's order.
+    private static object? Readable(object? value) => value is Enum e ? e.ToString() : value;
+
     private static Dictionary<string, object?> BuildChanges(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry)
     {
         var changes = new Dictionary<string, object?>();
@@ -286,15 +290,15 @@ public class AppDbContext : DbContext
 
             if (entry.State == EntityState.Added)
             {
-                changes[name] = new { @new = prop.CurrentValue };
+                changes[name] = new { @new = Readable(prop.CurrentValue) };
             }
             else if (entry.State == EntityState.Deleted)
             {
-                changes[name] = new { old = prop.OriginalValue };
+                changes[name] = new { old = Readable(prop.OriginalValue) };
             }
             else if (entry.State == EntityState.Modified && !Equals(prop.OriginalValue, prop.CurrentValue))
             {
-                changes[name] = new { old = prop.OriginalValue, @new = prop.CurrentValue };
+                changes[name] = new { old = Readable(prop.OriginalValue), @new = Readable(prop.CurrentValue) };
             }
         }
 

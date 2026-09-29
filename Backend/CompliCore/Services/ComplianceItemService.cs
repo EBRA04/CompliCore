@@ -84,11 +84,7 @@ public class ComplianceItemService
     {
         ValidateTypeSubject(request.Type, request.EmployeeId);
 
-        if (request.EmployeeId != null)
-        {
-            var employeeExists = await _db.Employees.AnyAsync(e => e.Id == request.EmployeeId);
-            if (!employeeExists) throw new DomainException("Employee not found.");
-        }
+        var reference = await ValidateEmployeeAsync(request.Type, request.EmployeeId, request.ReferenceNumber);
 
         if (request.IssueDate != null && request.IssueDate > request.ExpiryDate)
         {
@@ -100,7 +96,7 @@ public class ComplianceItemService
             EmployeeId = request.EmployeeId,
             Type = request.Type,
             Title = string.IsNullOrWhiteSpace(request.Title) ? ComplianceItemRules.DisplayName(request.Type) : request.Title,
-            ReferenceNumber = request.ReferenceNumber,
+            ReferenceNumber = reference,
             IssueDate = request.IssueDate,
             ExpiryDate = request.ExpiryDate,
             Notes = request.Notes
@@ -119,11 +115,7 @@ public class ComplianceItemService
 
         ValidateTypeSubject(request.Type, request.EmployeeId);
 
-        if (request.EmployeeId != null)
-        {
-            var employeeExists = await _db.Employees.AnyAsync(e => e.Id == request.EmployeeId);
-            if (!employeeExists) throw new DomainException("Employee not found.");
-        }
+        var reference = await ValidateEmployeeAsync(request.Type, request.EmployeeId, request.ReferenceNumber);
 
         if (request.IssueDate != null && request.IssueDate > request.ExpiryDate)
         {
@@ -133,7 +125,7 @@ public class ComplianceItemService
         item.EmployeeId = request.EmployeeId;
         item.Type = request.Type;
         item.Title = string.IsNullOrWhiteSpace(request.Title) ? ComplianceItemRules.DisplayName(request.Type) : request.Title;
-        item.ReferenceNumber = request.ReferenceNumber;
+        item.ReferenceNumber = reference;
         item.IssueDate = request.IssueDate;
         item.ExpiryDate = request.ExpiryDate;
         item.Notes = request.Notes;
@@ -169,6 +161,29 @@ public class ComplianceItemService
             .ToList();
 
         return new DashboardResponse(responses.Count, valid, expiring, expired, nextToExpire);
+    }
+
+    // Validates the employee link and returns the reference number to store.
+    // The employee is looked up through the tenant-filtered set, so another
+    // company's employee simply "does not exist" here.
+    // An Iqama item requires the employee to actually have an iqama number,
+    // and a blank reference number is filled in from it (one source of truth).
+    private async Task<string?> ValidateEmployeeAsync(ComplianceItemType type, Guid? employeeId, string? referenceNumber)
+    {
+        if (employeeId == null) return referenceNumber;
+
+        var employee = await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId);
+        if (employee == null) throw new DomainException("Employee not found.");
+
+        if (type == ComplianceItemType.Iqama)
+        {
+            if (string.IsNullOrWhiteSpace(employee.IqamaNumber))
+                throw new DomainException($"{employee.FullName} has no iqama number.");
+
+            return string.IsNullOrWhiteSpace(referenceNumber) ? employee.IqamaNumber : referenceNumber;
+        }
+
+        return referenceNumber;
     }
 
     private static void ValidateTypeSubject(CompliCore.Enums.ComplianceItemType type, Guid? employeeId)

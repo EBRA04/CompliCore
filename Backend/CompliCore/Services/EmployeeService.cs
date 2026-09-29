@@ -60,26 +60,24 @@ public class EmployeeService
 
     public async Task<EmployeeResponse> CreateAsync(CreateEmployeeRequest request)
     {
-        if (!string.IsNullOrWhiteSpace(request.IqamaNumber))
-        {
-            var duplicate = await _db.Employees
-                .AnyAsync(e => e.IqamaNumber == request.IqamaNumber);
+        // "" or whitespace becomes null. Postgres treats NULLs as distinct in the
+        // unique (TenantId, IqamaNumber) index, but two "" values would collide.
+        var iqama = string.IsNullOrWhiteSpace(request.IqamaNumber) ? null : request.IqamaNumber.Trim();
 
-            if (!string.IsNullOrWhiteSpace(request.IqamaNumber) && !Regex.IsMatch(request.IqamaNumber, @"^2\d{9}$"))
-            {
+        if (iqama != null)
+        {
+            if (!Regex.IsMatch(iqama, @"^2\d{9}$"))
                 throw new DomainException("Iqama number must be 10 digits starting with 2.");
-            }
-            if (duplicate)
-            {
+
+            if (await _db.Employees.AnyAsync(e => e.IqamaNumber == iqama))
                 throw new ConflictException("An employee with this iqama number already exists.");
-            }
         }
 
         var employee = new Employee
         {
             FullName = request.FullName,
             Nationality = request.Nationality,
-            IqamaNumber = request.IqamaNumber,
+            IqamaNumber = iqama,
             JobTitle = request.JobTitle
         };
 
@@ -94,29 +92,22 @@ public class EmployeeService
     public async Task<EmployeeResponse> UpdateAsync(Guid id, UpdateEmployeeRequest request)
     {
         var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id);
+        if (employee == null) throw new NotFoundException("Employee not found.");
 
-        if (employee == null)
-        {
-            throw new NotFoundException("Employee not found.");
-        }
-        if (!string.IsNullOrWhiteSpace(request.IqamaNumber) && !Regex.IsMatch(request.IqamaNumber, @"^2\d{9}$"))
-        {
-            throw new DomainException("Iqama number must be 10 digits starting with 2.");
-        }
-        if (!string.IsNullOrWhiteSpace(request.IqamaNumber))
-        {
-            var duplicate = await _db.Employees
-                .AnyAsync(e => e.IqamaNumber == request.IqamaNumber && e.Id != id);
+        var iqama = string.IsNullOrWhiteSpace(request.IqamaNumber) ? null : request.IqamaNumber.Trim();
 
-            if (duplicate)
-            {
+        if (iqama != null)
+        {
+            if (!Regex.IsMatch(iqama, @"^2\d{9}$"))
+                throw new DomainException("Iqama number must be 10 digits starting with 2.");
+
+            if (await _db.Employees.AnyAsync(e => e.IqamaNumber == iqama && e.Id != id))
                 throw new ConflictException("An employee with this iqama number already exists.");
-            }
         }
 
         employee.FullName = request.FullName;
         employee.Nationality = request.Nationality;
-        employee.IqamaNumber = request.IqamaNumber;
+        employee.IqamaNumber = iqama;
         employee.JobTitle = request.JobTitle;
 
         await _db.SaveChangesAsync();
@@ -125,16 +116,15 @@ public class EmployeeService
             employee.Id, employee.FullName, employee.Nationality,
             employee.IqamaNumber, employee.JobTitle, employee.CreatedAt, employee.UpdatedAt);
     }
-
     public async Task DeleteAsync(Guid id)
     {
-        var employee = await _db.Employees.FirstOrDefaultAsync(e => e.Id == id);
+        var employee = await _db.Employees
+            .Include(e => e.ComplianceItems)
+            .FirstOrDefaultAsync(e => e.Id == id);
 
-        if (employee == null)
-        {
-            throw new NotFoundException("Employee not found.");
-        }
+        if (employee == null) throw new NotFoundException("Employee not found.");
 
+        _db.ComplianceItems.RemoveRange(employee.ComplianceItems.ToList());
         _db.Employees.Remove(employee);
         await _db.SaveChangesAsync();
     }

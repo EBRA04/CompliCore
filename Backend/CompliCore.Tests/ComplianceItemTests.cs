@@ -1,8 +1,10 @@
-﻿using System.Net;
-using System.Net.Http.Json;
+﻿using CompliCore.DTOs;
+using CompliCore.DTOs.AuditLogDtos;
 using CompliCore.DTOs.ComplianceItemDtos;
 using CompliCore.DTOs.EmployeeDtos;
 using CompliCore.Enums;
+using System.Net;
+using System.Net.Http.Json;
 using Xunit;
 
 namespace CompliCore.Tests;
@@ -14,6 +16,22 @@ public class ComplianceItemTests : IClassFixture<ApiFactory>
     public ComplianceItemTests(ApiFactory factory)
     {
         _factory = factory;
+    }
+    [Fact]
+    public async Task CreateIqama_ForEmployeeWithoutIqamaNumber_ReturnsBadRequest()
+    {
+        var (client, _) = await TestHelpers.RegisterTenantAsync(
+            _factory, "Al-Noor Contracting", $"a-{Guid.NewGuid()}@test.example");
+
+        var empResponse = await client.PostAsJsonAsync("/api/employees",
+            new CreateEmployeeRequest("No Iqama", "Saudi", null, null));
+        var employee = await empResponse.Content.ReadFromJsonAsync<EmployeeResponse>();
+
+        var response = await client.PostAsJsonAsync("/api/compliance-items",
+            new CreateComplianceItemRequest(employee!.Id, ComplianceItemType.Iqama, null, null, null,
+                new DateOnly(2026, 11, 15), null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -63,5 +81,26 @@ public class ComplianceItemTests : IClassFixture<ApiFactory>
             employee!.Id, ComplianceItemType.CommercialRegistration, null, null, null, new DateOnly(2027, 1, 1), null));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeletingEmployee_AuditsTheirDeletedItems()
+    {
+        var (client, _) = await TestHelpers.RegisterTenantAsync(
+            _factory, "Al-Noor Contracting", $"a-{Guid.NewGuid()}@test.example");
+
+        var empResponse = await client.PostAsJsonAsync("/api/employees",
+            new CreateEmployeeRequest("Mohammed Khan", "Pakistani", "2412345678", "Foreman"));
+        var employee = await empResponse.Content.ReadFromJsonAsync<EmployeeResponse>();
+
+        await client.PostAsJsonAsync("/api/compliance-items", new CreateComplianceItemRequest(
+            employee!.Id, ComplianceItemType.Iqama, null, null, null, new DateOnly(2026, 11, 15), null));
+
+        var delete = await client.DeleteAsync($"/api/employees/{employee.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+
+        var audit = await client.GetFromJsonAsync<PagedResult<AuditLogResponse>>(
+            "/api/audit-logs?entityName=ComplianceItem");
+        Assert.Contains(audit!.Items, a => a.Action == "Deleted");
     }
 }
